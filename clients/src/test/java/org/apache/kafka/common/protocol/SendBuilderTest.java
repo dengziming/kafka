@@ -17,11 +17,7 @@
 package org.apache.kafka.common.protocol;
 
 import org.apache.kafka.common.network.Send;
-import org.apache.kafka.common.record.CompressionType;
 import org.apache.kafka.common.record.MemoryRecords;
-import org.apache.kafka.common.record.MemoryRecordsBuilder;
-import org.apache.kafka.common.record.SimpleRecord;
-import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.test.TestUtils;
 import org.junit.Test;
@@ -82,7 +78,7 @@ public class SendBuilderTest {
     @Test
     public void testZeroCopyRecords() {
         ByteBuffer buffer = ByteBuffer.allocate(128);
-        MemoryRecords records = createRecords(buffer, "foo");
+        MemoryRecords records = TestUtils.createRecords(buffer, "foo");
 
         SendBuilder builder = new SendBuilder(8);
         builder.writeInt(5);
@@ -92,36 +88,12 @@ public class SendBuilderTest {
 
         // Overwrite the original buffer in order to prove the data was not copied
         buffer.rewind();
-        MemoryRecords overwrittenRecords = createRecords(buffer, "bar");
+        MemoryRecords overwrittenRecords = TestUtils.createRecords(buffer, "bar");
 
         ByteBuffer readBuffer = TestUtils.toBuffer(send);
         assertEquals(5, readBuffer.getInt());
-        assertEquals(overwrittenRecords, getRecords(readBuffer, records.sizeInBytes()));
+        assertEquals(overwrittenRecords, TestUtils.getRecords(readBuffer, records.sizeInBytes()));
         assertEquals(15, readBuffer.getInt());
-    }
-
-    private MemoryRecords getRecords(ByteBuffer buffer, int size) {
-        int initialPosition = buffer.position();
-        int initialLimit = buffer.limit();
-        int recordsLimit = initialPosition + size;
-
-        buffer.limit(recordsLimit);
-        MemoryRecords records = MemoryRecords.readableRecords(buffer.slice());
-
-        buffer.position(recordsLimit);
-        buffer.limit(initialLimit);
-        return records;
-    }
-
-    private MemoryRecords createRecords(ByteBuffer buffer, String value) {
-        MemoryRecordsBuilder recordsBuilder = MemoryRecords.builder(
-            buffer,
-            CompressionType.NONE,
-            TimestampType.CREATE_TIME,
-            0L
-        );
-        recordsBuilder.append(new SimpleRecord(Utils.utf8(value)));
-        return recordsBuilder.build();
     }
 
 }
