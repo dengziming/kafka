@@ -53,7 +53,7 @@ public class SendBuilderTest {
         ByteBuffer buffer = TestUtils.toBuffer(send);
         assertEquals(8 + data.length, buffer.remaining());
         assertEquals(5, buffer.getInt());
-        assertEquals("bar", getString(buffer, data.length));
+        assertEquals("bar", TestUtils.getString(buffer, data.length));
         assertEquals(15, buffer.getInt());
     }
 
@@ -76,7 +76,7 @@ public class SendBuilderTest {
 
         Send send = builder.build();
         ByteBuffer readBuffer = TestUtils.toBuffer(send);
-        assertEquals("yolo", getString(readBuffer, 4));
+        assertEquals("yolo", TestUtils.getString(readBuffer, 4));
     }
 
     @Test
@@ -98,12 +98,6 @@ public class SendBuilderTest {
         assertEquals(5, readBuffer.getInt());
         assertEquals(overwrittenRecords, getRecords(readBuffer, records.sizeInBytes()));
         assertEquals(15, readBuffer.getInt());
-    }
-
-    private String getString(ByteBuffer buffer, int size) {
-        byte[] readData = new byte[size];
-        buffer.get(readData);
-        return Utils.utf8(readData);
     }
 
     private MemoryRecords getRecords(ByteBuffer buffer, int size) {

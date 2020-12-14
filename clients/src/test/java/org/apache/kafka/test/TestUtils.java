@@ -437,6 +437,12 @@ public class TestUtils {
         }
     }
 
+    public static String getString(ByteBuffer buffer, int size) {
+        byte[] readData = new byte[size];
+        buffer.get(readData);
+        return Utils.utf8(readData);
+    }
+
     public static Set<TopicPartition> generateRandomTopicPartitions(int numTopic, int numPartitionPerTopic) {
         Set<TopicPartition> tps = new HashSet<>();
         for (int i = 0; i < numTopic; i++) {
