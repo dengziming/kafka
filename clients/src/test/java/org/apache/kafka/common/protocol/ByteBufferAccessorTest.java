@@ -48,20 +48,20 @@ public class ByteBufferAccessorTest {
     @Test
     public void testCopyByteBuffer() {
         byte[] data = Utils.utf8("foo");
-        ByteBuffer nodeZeroCopyBuffer = ByteBuffer.wrap(data);
-        ByteBufferAccessor accessor = new ByteBufferAccessor(ByteBuffer.allocate(8 + nodeZeroCopyBuffer.remaining()));
+        ByteBuffer noneZeroCopyBuffer = ByteBuffer.wrap(data);
+        ByteBufferAccessor accessor = new ByteBufferAccessor(ByteBuffer.allocate(8 + noneZeroCopyBuffer.remaining()));
 
         accessor.writeInt(5);
-        accessor.writeByteBuffer(nodeZeroCopyBuffer);
+        accessor.writeByteBuffer(noneZeroCopyBuffer);
         accessor.writeInt(15);
         accessor.flip();
 
         // Overwrite the original buffer in order to prove the data was copied
         byte[] overwrittenData = Utils.utf8("bar");
         assertEquals(data.length, overwrittenData.length);
-        nodeZeroCopyBuffer.rewind();
-        nodeZeroCopyBuffer.put(overwrittenData);
-        nodeZeroCopyBuffer.rewind();
+        noneZeroCopyBuffer.rewind();
+        noneZeroCopyBuffer.put(overwrittenData);
+        noneZeroCopyBuffer.rewind();
 
         ByteBuffer buffer = accessor.buffer();
         assertEquals(8 + data.length, buffer.remaining());
