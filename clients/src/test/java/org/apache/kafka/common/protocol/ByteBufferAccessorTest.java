@@ -32,38 +32,38 @@ public class ByteBufferAccessorTest {
     public void testReadWrite() {
         byte[] data = Utils.utf8("foo");
         ByteBuffer zeroCopyBuffer = ByteBuffer.wrap(data);
-        ByteBufferAccessor builder = new ByteBufferAccessor(ByteBuffer.allocate(8 + zeroCopyBuffer.remaining()));
+        ByteBufferAccessor accessor = new ByteBufferAccessor(ByteBuffer.allocate(8 + zeroCopyBuffer.remaining()));
 
-        builder.writeInt(5);
-        builder.writeByteBuffer(zeroCopyBuffer);
-        builder.writeInt(15);
+        accessor.writeInt(5);
+        accessor.writeByteBuffer(zeroCopyBuffer);
+        accessor.writeInt(15);
 
-        builder.flip();
+        accessor.flip();
 
-        assertEquals(5, builder.readInt());
-        assertEquals("foo", TestUtils.getString(builder.readByteBuffer(data.length), data.length));
-        assertEquals(15, builder.readInt());
+        assertEquals(5, accessor.readInt());
+        assertEquals("foo", TestUtils.getString(accessor.readByteBuffer(data.length), data.length));
+        assertEquals(15, accessor.readInt());
     }
 
     @Test
     public void testCopyByteBuffer() {
         byte[] data = Utils.utf8("foo");
-        ByteBuffer zeroCopyBuffer = ByteBuffer.wrap(data);
-        ByteBufferAccessor builder = new ByteBufferAccessor(ByteBuffer.allocate(8 + zeroCopyBuffer.remaining()));
+        ByteBuffer nodeZeroCopyBuffer = ByteBuffer.wrap(data);
+        ByteBufferAccessor accessor = new ByteBufferAccessor(ByteBuffer.allocate(8 + nodeZeroCopyBuffer.remaining()));
 
-        builder.writeInt(5);
-        builder.writeByteBuffer(zeroCopyBuffer);
-        builder.writeInt(15);
-        builder.flip();
+        accessor.writeInt(5);
+        accessor.writeByteBuffer(nodeZeroCopyBuffer);
+        accessor.writeInt(15);
+        accessor.flip();
 
         // Overwrite the original buffer in order to prove the data was copied
         byte[] overwrittenData = Utils.utf8("bar");
         assertEquals(data.length, overwrittenData.length);
-        zeroCopyBuffer.rewind();
-        zeroCopyBuffer.put(overwrittenData);
-        zeroCopyBuffer.rewind();
+        nodeZeroCopyBuffer.rewind();
+        nodeZeroCopyBuffer.put(overwrittenData);
+        nodeZeroCopyBuffer.rewind();
 
-        ByteBuffer buffer = builder.buffer();
+        ByteBuffer buffer = accessor.buffer();
         assertEquals(8 + data.length, buffer.remaining());
         assertEquals(5, buffer.getInt());
 
@@ -77,19 +77,19 @@ public class ByteBufferAccessorTest {
         assertEquals(4, data.length);
 
         ByteBuffer buffer = ByteBuffer.wrap(data);
-        ByteBufferAccessor builder = new ByteBufferAccessor(ByteBuffer.allocate(buffer.remaining()));
+        ByteBufferAccessor accessor = new ByteBufferAccessor(ByteBuffer.allocate(buffer.remaining()));
 
         buffer.limit(2);
-        builder.writeByteBuffer(buffer);
+        accessor.writeByteBuffer(buffer);
         assertEquals(0, buffer.position());
 
         buffer.position(2);
         buffer.limit(4);
-        builder.writeByteBuffer(buffer);
+        accessor.writeByteBuffer(buffer);
         assertEquals(2, buffer.position());
-        builder.flip();
+        accessor.flip();
 
-        ByteBuffer readBuffer = builder.buffer();
+        ByteBuffer readBuffer = accessor.buffer();
         assertEquals("yolo", TestUtils.getString(readBuffer, 4));
     }
 
@@ -98,12 +98,12 @@ public class ByteBufferAccessorTest {
         ByteBuffer buffer = ByteBuffer.allocate(128);
         MemoryRecords records = TestUtils.createRecords(buffer, "foo");
 
-        ByteBufferAccessor builder = new ByteBufferAccessor(ByteBuffer.allocate(records.sizeInBytes() + 8));
-        builder.writeInt(5);
-        builder.writeRecords(records);
-        builder.writeInt(15);
-        builder.flip();
-        ByteBuffer readBuffer = builder.buffer();
+        ByteBufferAccessor accessor = new ByteBufferAccessor(ByteBuffer.allocate(records.sizeInBytes() + 8));
+        accessor.writeInt(5);
+        accessor.writeRecords(records);
+        accessor.writeInt(15);
+        accessor.flip();
+        ByteBuffer readBuffer = accessor.buffer();
 
         // Overwrite the original buffer in order to prove the data was copied
         buffer.rewind();
