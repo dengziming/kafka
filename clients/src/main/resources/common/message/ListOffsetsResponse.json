@@ -29,6 +29,8 @@
   // Version 5 adds a new error code, OFFSET_NOT_AVAILABLE.
   //
   // Version 6 enables flexible versions.
+  //
+  // Version 7 adds topic id.
   "validVersions": "0-6",
   "flexibleVersions": "6+",
   "fields": [
@@ -36,8 +38,10 @@
       "about": "The duration in milliseconds for which the request was throttled due to a quota violation, or zero if the request did not violate any quota." },
     { "name": "Topics", "type": "[]ListOffsetsTopicResponse", "versions": "0+",
       "about": "Each topic in the response.", "fields": [
-      { "name": "Name", "type": "string", "versions": "0+", "entityType": "topicName",
+      { "name": "Name", "type": "string", "versions": "0-6", "entityType": "topicName", "ignorable": true,
         "about": "The topic name" },
+      { "name": "TopicId", "type": "uuid", "versions": "7+",
+        "about": "The topic id." },
       { "name": "Partitions", "type": "[]ListOffsetsPartitionResponse", "versions": "0+",
         "about": "Each partition in the response.", "fields": [
         { "name": "PartitionIndex", "type": "int32", "versions": "0+",
