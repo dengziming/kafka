@@ -29,8 +29,6 @@ import org.apache.kafka.clients.admin.CreateTopicsResult.TopicMetadataAndConfig;
 import org.apache.kafka.clients.admin.DeleteAclsResult.FilterResult;
 import org.apache.kafka.clients.admin.DeleteAclsResult.FilterResults;
 import org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult.ReplicaLogDirInfo;
-import org.apache.kafka.clients.admin.ListOffsetsResult.ListOffsetsResultInfo;
-import org.apache.kafka.clients.admin.OffsetSpec.TimestampSpec;
 import org.apache.kafka.clients.admin.internals.AbortTransactionHandler;
 import org.apache.kafka.clients.admin.internals.AdminApiDriver;
 import org.apache.kafka.clients.admin.internals.AdminApiHandler;
@@ -47,8 +45,9 @@ import org.apache.kafka.clients.admin.internals.DescribeProducersHandler;
 import org.apache.kafka.clients.admin.internals.DescribeTransactionsHandler;
 import org.apache.kafka.clients.admin.internals.ListConsumerGroupOffsetsHandler;
 import org.apache.kafka.clients.admin.internals.ListTransactionsHandler;
-import org.apache.kafka.clients.admin.internals.MetadataOperationContext;
 import org.apache.kafka.clients.admin.internals.RemoveMembersFromConsumerGroupHandler;
+import org.apache.kafka.clients.admin.internals.ListOffsetsHandler;
+import org.apache.kafka.clients.consumer.ConsumerPartitionAssignor.Assignment;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.internals.ConsumerProtocol;
 import org.apache.kafka.common.Cluster;
@@ -139,10 +138,6 @@ import org.apache.kafka.common.message.ExpireDelegationTokenRequestData;
 import org.apache.kafka.common.message.LeaveGroupRequestData.MemberIdentity;
 import org.apache.kafka.common.message.ListGroupsRequestData;
 import org.apache.kafka.common.message.ListGroupsResponseData;
-import org.apache.kafka.common.message.ListOffsetsRequestData.ListOffsetsPartition;
-import org.apache.kafka.common.message.ListOffsetsRequestData.ListOffsetsTopic;
-import org.apache.kafka.common.message.ListOffsetsResponseData.ListOffsetsPartitionResponse;
-import org.apache.kafka.common.message.ListOffsetsResponseData.ListOffsetsTopicResponse;
 import org.apache.kafka.common.message.ListPartitionReassignmentsRequestData;
 import org.apache.kafka.common.message.MetadataRequestData;
 import org.apache.kafka.common.message.RenewDelegationTokenRequestData;
@@ -214,7 +209,6 @@ import org.apache.kafka.common.requests.IncrementalAlterConfigsResponse;
 import org.apache.kafka.common.requests.ListGroupsRequest;
 import org.apache.kafka.common.requests.ListGroupsResponse;
 import org.apache.kafka.common.requests.ListOffsetsRequest;
-import org.apache.kafka.common.requests.ListOffsetsResponse;
 import org.apache.kafka.common.requests.ListPartitionReassignmentsRequest;
 import org.apache.kafka.common.requests.ListPartitionReassignmentsResponse;
 import org.apache.kafka.common.requests.MetadataRequest;
@@ -3078,14 +3072,6 @@ public class KafkaAdminClient extends AdminClient {
         return new DescribeDelegationTokenResult(tokensFuture);
     }
 
-    private void rescheduleMetadataTask(MetadataOperationContext<?, ?> context, Supplier<List<Call>> nextCalls) {
-        log.info("Retrying to fetch metadata.");
-        // Requeue the task so that we can re-attempt fetching metadata
-        context.setResponse(Optional.empty());
-        Call metadataCall = getMetadataCall(context, nextCalls);
-        runnable.call(metadataCall, time.milliseconds());
-    }
-
     @Override
     public DescribeConsumerGroupsResult describeConsumerGroups(final Collection<String> groupIds,
                                                                final DescribeConsumerGroupsOptions options) {
@@ -3094,46 +3080,6 @@ public class KafkaAdminClient extends AdminClient {
         DescribeConsumerGroupsHandler handler = new DescribeConsumerGroupsHandler(options.includeAuthorizedOperations(), logContext);
         invokeDriver(handler, future, options.timeoutMs);
         return new DescribeConsumerGroupsResult(future.all());
-    }
-
-    /**
-     * Returns a {@code Call} object to fetch the cluster metadata. Takes a List of Calls
-     * parameter to schedule actions that need to be taken using the metadata. The param is a Supplier
-     * so that it can be lazily created, so that it can use the results of the metadata call in its
-     * construction.
-     *
-     * @param <T> The type of return value of the KafkaFuture, like ListOffsetsResultInfo, etc.
-     * @param <O> The type of configuration option, like ListOffsetsOptions, etc
-     */
-    private <T, O extends AbstractOptions<O>> Call getMetadataCall(MetadataOperationContext<T, O> context,
-                                                                   Supplier<List<Call>> nextCalls) {
-        return new Call("metadata", context.deadline(), new LeastLoadedNodeProvider()) {
-            @Override
-            MetadataRequest.Builder createRequest(int timeoutMs) {
-                return new MetadataRequest.Builder(new MetadataRequestData()
-                    .setTopics(convertToMetadataRequestTopic(context.topics()))
-                    .setAllowAutoTopicCreation(false));
-            }
-
-            @Override
-            void handleResponse(AbstractResponse abstractResponse) {
-                MetadataResponse response = (MetadataResponse) abstractResponse;
-                MetadataOperationContext.handleMetadataErrors(response);
-
-                context.setResponse(Optional.of(response));
-
-                for (Call call : nextCalls.get()) {
-                    runnable.call(call, time.milliseconds());
-                }
-            }
-
-            @Override
-            void handleFailure(Throwable throwable) {
-                for (KafkaFutureImpl<T> future : context.futures().values()) {
-                    future.completeExceptionally(throwable);
-                }
-            }
-        };
     }
 
     private Set<AclOperation> validAclOperations(final int authorizedOperations) {
@@ -3652,7 +3598,7 @@ public class KafkaAdminClient extends AdminClient {
         return new AlterConsumerGroupOffsetsResult(future.get(CoordinatorKey.byGroupId(groupId)));
     }
 
-    @Override
+    /*@Override
     public ListOffsetsResult listOffsets(Map<TopicPartition, OffsetSpec> topicPartitionOffsets,
                                          ListOffsetsOptions options) {
 
@@ -3813,7 +3759,7 @@ public class KafkaAdminClient extends AdminClient {
             });
         }
         return calls;
-    }
+    }*/
 
     @Override
     public DescribeClientQuotasResult describeClientQuotas(ClientQuotaFilter filter, DescribeClientQuotasOptions options) {
@@ -4279,6 +4225,28 @@ public class KafkaAdminClient extends AdminClient {
         return new ListTransactionsResult(future.all());
     }
 
+    @Override
+    public ListOffsetsResult listOffsets(Map<TopicPartition, OffsetSpec> topicPartitionOffsets,
+                                         ListOffsetsOptions options) {
+
+        Function<OffsetSpec, Long> offsetQueryFunction = this::getOffsetFromOffsetSpec;
+
+        Map<TopicPartition, Long> topicPartitionLongOffsets = new HashMap<>(topicPartitionOffsets.size());
+        for (Map.Entry<TopicPartition, OffsetSpec> entry: topicPartitionOffsets.entrySet()) {
+            topicPartitionLongOffsets.put(entry.getKey(), offsetQueryFunction.apply(entry.getValue()));
+        }
+        AdminApiFuture.SimpleAdminApiFuture<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> future =
+                ListOffsetsHandler.newFuture(topicPartitionOffsets.keySet());
+        ListOffsetsHandler handler = new ListOffsetsHandler(
+            topicPartitionLongOffsets,
+            logContext,
+            options.isolationLevel()
+        );
+
+        invokeDriver(handler, future, options.timeoutMs);
+        return new ListOffsetsResult(new HashMap<>(future.all()));
+    }
+
     private <K, V> void invokeDriver(
         AdminApiHandler<K, V> handler,
         AdminApiFuture<K, V> future,
@@ -4327,6 +4295,13 @@ public class KafkaAdminClient extends AdminClient {
                 driver.onFailure(currentTimeMs, spec, throwable);
                 maybeSendRequests(driver, currentTimeMs);
             }
+
+            /*@Override
+            boolean handleUnsupportedVersionException(UnsupportedVersionException exception) {
+                long currentTimeMs = time.milliseconds();
+                driver.onUnsupportedVersion(currentTimeMs, spec, exception);
+                return false;
+            }*/
 
             @Override
             void maybeRetry(long currentTimeMs, Throwable throwable) {
