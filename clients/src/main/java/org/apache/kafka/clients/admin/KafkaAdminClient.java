@@ -29,6 +29,8 @@ import org.apache.kafka.clients.admin.CreateTopicsResult.TopicMetadataAndConfig;
 import org.apache.kafka.clients.admin.DeleteAclsResult.FilterResult;
 import org.apache.kafka.clients.admin.DeleteAclsResult.FilterResults;
 import org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult.ReplicaLogDirInfo;
+import org.apache.kafka.clients.admin.ListOffsetsResult.ListOffsetsResultInfo;
+import org.apache.kafka.clients.admin.OffsetSpec.TimestampSpec;
 import org.apache.kafka.clients.admin.internals.AbortTransactionHandler;
 import org.apache.kafka.clients.admin.internals.AdminApiDriver;
 import org.apache.kafka.clients.admin.internals.AdminApiHandler;
@@ -4228,15 +4230,14 @@ public class KafkaAdminClient extends AdminClient {
     @Override
     public ListOffsetsResult listOffsets(Map<TopicPartition, OffsetSpec> topicPartitionOffsets,
                                          ListOffsetsOptions options) {
-
         Function<OffsetSpec, Long> offsetQueryFunction = this::getOffsetFromOffsetSpec;
 
         Map<TopicPartition, Long> topicPartitionLongOffsets = new HashMap<>(topicPartitionOffsets.size());
         for (Map.Entry<TopicPartition, OffsetSpec> entry: topicPartitionOffsets.entrySet()) {
             topicPartitionLongOffsets.put(entry.getKey(), offsetQueryFunction.apply(entry.getValue()));
         }
-        AdminApiFuture.SimpleAdminApiFuture<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> future =
-                ListOffsetsHandler.newFuture(topicPartitionOffsets.keySet());
+        AdminApiFuture.SimpleAdminApiFuture<TopicPartition, ListOffsetsResultInfo> future =
+            ListOffsetsHandler.newFuture(topicPartitionOffsets.keySet());
         ListOffsetsHandler handler = new ListOffsetsHandler(
             topicPartitionLongOffsets,
             logContext,
@@ -4295,13 +4296,6 @@ public class KafkaAdminClient extends AdminClient {
                 driver.onFailure(currentTimeMs, spec, throwable);
                 maybeSendRequests(driver, currentTimeMs);
             }
-
-            /*@Override
-            boolean handleUnsupportedVersionException(UnsupportedVersionException exception) {
-                long currentTimeMs = time.milliseconds();
-                driver.onUnsupportedVersion(currentTimeMs, spec, exception);
-                return false;
-            }*/
 
             @Override
             void maybeRetry(long currentTimeMs, Throwable throwable) {

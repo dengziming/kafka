@@ -21,6 +21,7 @@ import org.apache.kafka.clients.admin.internals.AdminApiHandler.ApiResult;
 import org.apache.kafka.common.IsolationLevel;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.UnknownServerException;
+import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.message.ListOffsetsRequestData;
 import org.apache.kafka.common.message.ListOffsetsResponseData;
 import org.apache.kafka.common.message.ListOffsetsResponseData.ListOffsetsPartitionResponse;
@@ -35,6 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -62,15 +64,17 @@ public class ListOffsetsHandlerTest {
     @Test
     public void testBuildRequest() {
         Set<TopicPartition> topicPartitions = mkSet(
-                new TopicPartition("foo", 5),
-                new TopicPartition("bar", 3),
-                new TopicPartition("foo", 4)
+            new TopicPartition("foo", 5),
+            new TopicPartition("bar", 3),
+            new TopicPartition("foo", 4),
+            new TopicPartition("bar", 2)
         );
 
         Map<TopicPartition, Long> topicPartitionOffsets = mkMap(
             mkEntry(new TopicPartition("foo", 5), ListOffsetsRequest.EARLIEST_TIMESTAMP),
             mkEntry(new TopicPartition("bar", 3), ListOffsetsRequest.LATEST_TIMESTAMP),
-            mkEntry(new TopicPartition("foo", 4), 1L)
+            mkEntry(new TopicPartition("foo", 4), 1L),
+            mkEntry(new TopicPartition("bar", 2), ListOffsetsRequest.MAX_TIMESTAMP)
         );
 
         ListOffsetsHandler handler = newHandler(
@@ -95,9 +99,14 @@ public class ListOffsetsHandlerTest {
                     new ListOffsetsRequestData.ListOffsetsPartition()
                         .setPartitionIndex(5)
                         .setTimestamp(ListOffsetsRequest.EARLIEST_TIMESTAMP)
-                ) : mkSet(new ListOffsetsRequestData.ListOffsetsPartition()
-                    .setPartitionIndex(3)
-                    .setTimestamp(ListOffsetsRequest.LATEST_TIMESTAMP));
+                ) : mkSet(
+                    new ListOffsetsRequestData.ListOffsetsPartition()
+                        .setPartitionIndex(3)
+                        .setTimestamp(ListOffsetsRequest.LATEST_TIMESTAMP),
+                new ListOffsetsRequestData.ListOffsetsPartition()
+                    .setPartitionIndex(2)
+                    .setTimestamp(ListOffsetsRequest.MAX_TIMESTAMP)
+                );
             assertEquals(expectedTopicPartitions, new HashSet<>(topic.partitions()));
         });
     }
@@ -157,6 +166,37 @@ public class ListOffsetsHandlerTest {
 
         ListOffsetsResult.ListOffsetsResultInfo listOffsetsResultInfo = result.completedKeys.get(topicPartition);
         assertMatchingOffsets(partitionResponse, listOffsetsResultInfo);
+    }
+
+    @Test
+    public void testHandleUnsupportedVersion() {
+        TopicPartition supported = new TopicPartition("foo", 5);
+        TopicPartition unsupported = new TopicPartition("bar", 5);
+
+        Set<TopicPartition> topicPartitions = mkSet(supported, unsupported);
+
+        Map<TopicPartition, Long> topicPartitionOffsets = mkMap(
+            mkEntry(supported, ListOffsetsRequest.EARLIEST_TIMESTAMP),
+            mkEntry(unsupported, ListOffsetsRequest.MAX_TIMESTAMP)  // unsupported version
+        );
+
+        ListOffsetsHandler handler = newHandler(
+            topicPartitionOffsets
+        );
+
+        int brokerId = 3;
+        ApiRequestScope mockScope = new ApiRequestScope() {
+            public OptionalInt destinationBrokerId() {
+                return OptionalInt.of(brokerId);
+            }
+        };
+
+        final Map<TopicPartition, Throwable> unsupportedVersion = handler.handleUnsupportedVersion(
+            new AdminApiDriver.RequestSpec<>(null, mockScope, topicPartitions, null, 0L, 0L, 1),
+            new UnsupportedVersionException("unsupported version")
+        );
+
+        assertEquals(mkSet(unsupported), unsupportedVersion.keySet());
     }
 
     private void assertRetriableError(

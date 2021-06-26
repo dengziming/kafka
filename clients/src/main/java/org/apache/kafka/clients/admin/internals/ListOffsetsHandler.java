@@ -18,8 +18,10 @@ package org.apache.kafka.clients.admin.internals;
 
 import org.apache.kafka.clients.admin.ListOffsetsResult;
 import org.apache.kafka.common.IsolationLevel;
+import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.InvalidMetadataException;
+import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.message.ListOffsetsRequestData;
 import org.apache.kafka.common.message.ListOffsetsResponseData;
 import org.apache.kafka.common.protocol.Errors;
@@ -40,6 +42,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.apache.kafka.common.protocol.Errors.LEADER_NOT_AVAILABLE;
 
@@ -48,6 +52,7 @@ public class ListOffsetsHandler implements AdminApiHandler<TopicPartition, ListO
     private final Logger log;
     private final Map<TopicPartition, Long> topicPartitionOffsets;
     private final IsolationLevel isolationLevel;
+    private boolean supportsMaxTimestamp = true;
 
     public ListOffsetsHandler(
         Map<TopicPartition, Long> topicPartitionOffsets,
@@ -82,7 +87,7 @@ public class ListOffsetsHandler implements AdminApiHandler<TopicPartition, ListO
         Set<TopicPartition> topicPartitions
     ) {
 
-        final ArrayList<ListOffsetsRequestData.ListOffsetsTopic> listOffsetsTopics = new ArrayList<>(CollectionUtils.groupTopicPartitionsByTopic(
+        List<ListOffsetsRequestData.ListOffsetsTopic> listOffsetsTopics = new ArrayList<>(CollectionUtils.groupTopicPartitionsByTopic(
             topicPartitions,
             topic -> new ListOffsetsRequestData.ListOffsetsTopic().setName(topic),
             (topicRequest, tp) -> topicRequest.partitions()
@@ -93,7 +98,7 @@ public class ListOffsetsHandler implements AdminApiHandler<TopicPartition, ListO
         ).values());
 
         return ListOffsetsRequest.Builder
-            .forConsumer(true, isolationLevel)
+            .forConsumer(true, isolationLevel, supportsMaxTimestamp)
             .setTargetTimes(listOffsetsTopics);
     }
 
@@ -119,7 +124,7 @@ public class ListOffsetsHandler implements AdminApiHandler<TopicPartition, ListO
 
     @Override
     public ApiResult<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> handleResponse(
-        int brokerId,
+        Node broker,
         Set<TopicPartition> keys,
         AbstractResponse abstractResponse
     ) {
@@ -156,4 +161,33 @@ public class ListOffsetsHandler implements AdminApiHandler<TopicPartition, ListO
         return new ApiResult<>(completed, failed, unmapped);
     }
 
+    @Override
+    public Map<TopicPartition, Throwable> handleUnsupportedVersion(
+        AdminApiDriver.RequestSpec<TopicPartition> spec,
+        UnsupportedVersionException t
+    ) {
+
+        if (supportsMaxTimestamp) {
+            supportsMaxTimestamp = false;
+
+            Map<TopicPartition, Throwable> failedMaxTimestamp = new HashMap<>();
+
+            // fail any unsupported futures and remove partitions from the downgraded retry
+            boolean foundMaxTimestampPartition = false;
+            for (Map.Entry<TopicPartition, Long> entry: topicPartitionOffsets.entrySet())
+                if (entry.getValue() == ListOffsetsRequest.MAX_TIMESTAMP) {
+                    foundMaxTimestampPartition = true;
+                    failedMaxTimestamp.put(entry.getKey(), new UnsupportedVersionException(
+                        "Broker " + spec.scope.destinationBrokerId() + " does not support MAX_TIMESTAMP offset spec"));
+                }
+
+            if (foundMaxTimestampPartition)
+                return failedMaxTimestamp;
+        }
+
+        return spec.keys.stream().collect(Collectors.toMap(
+            Function.identity(),
+            key -> t
+        ));
+    }
 }
