@@ -19,6 +19,7 @@ package org.apache.kafka.clients.admin.internals;
 import org.apache.kafka.clients.admin.ListOffsetsResult;
 import org.apache.kafka.clients.admin.internals.AdminApiHandler.ApiResult;
 import org.apache.kafka.common.IsolationLevel;
+import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.UnknownServerException;
 import org.apache.kafka.common.errors.UnsupportedVersionException;
@@ -158,7 +159,7 @@ public class ListOffsetsHandlerTest {
         );
 
         ApiResult<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> result =
-            handler.handleResponse(brokerId, mkSet(topicPartition), response);
+            handler.handleResponse(new Node(brokerId, "host", 1234), mkSet(topicPartition), response);
 
         assertEquals(mkSet(topicPartition), result.completedKeys.keySet());
         assertEquals(emptyMap(), result.failedKeys);
@@ -229,7 +230,7 @@ public class ListOffsetsHandlerTest {
         ListOffsetsHandler handler = newHandler(mkMap(mkEntry(
             topicPartition, ListOffsetsRequest.EARLIEST_TIMESTAMP)));
         ListOffsetsResponse response = buildResponseWithError(topicPartition, error);
-        return handler.handleResponse(3, mkSet(topicPartition), response);
+        return handler.handleResponse(new Node(3, "host", 1234), mkSet(topicPartition), response);
     }
 
     private ListOffsetsResponse buildResponseWithError(

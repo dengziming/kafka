@@ -63,6 +63,8 @@ public class ListOffsetsHandler implements AdminApiHandler<TopicPartition, ListO
         this.log = logContext.logger(ListOffsetsHandler.class);
         this.logContext = logContext;
         this.isolationLevel = isolationLevel;
+        this.supportsMaxTimestamp = topicPartitionOffsets.values().stream()
+            .anyMatch(timestamp -> timestamp == ListOffsetsRequest.MAX_TIMESTAMP);
     }
 
     public static AdminApiFuture.SimpleAdminApiFuture<TopicPartition, ListOffsetsResult.ListOffsetsResultInfo> newFuture(
