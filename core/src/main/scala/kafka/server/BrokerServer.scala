@@ -343,7 +343,7 @@ class BrokerServer(
           k -> VersionRange.of(v.min, v.max)
       }.asJava
 
-      lifecycleManager.start(() => metadataListener.highestMetadataOffset,
+      lifecycleManager.start(() => raftManager.replicatedLog.endOffset().offset,
         BrokerToControllerChannelManager(controllerNodeProvider, time, metrics, config,
           "heartbeat", threadNamePrefix, config.brokerSessionTimeoutMs.toLong),
         metaProps.clusterId, networkListeners, featuresRemapped)
