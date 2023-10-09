@@ -140,6 +140,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+
 public class FetcherTest {
     private static final double EPSILON = 0.0001;
 
