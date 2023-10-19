@@ -110,6 +110,7 @@ class FetchFromFollowerIntegrationTest extends BaseFetchRequestTest {
       brokers,
       replicaAssignment = Map(0 -> Seq(leaderBrokerId, followerBrokerId))
     )
+    TestUtils.waitUntilLeaderIsKnown(brokers, new TopicPartition(topic, 0))
 
     TestUtils.generateAndProduceMessages(brokers, topic, numMessages = 10)
 
@@ -137,6 +138,7 @@ class FetchFromFollowerIntegrationTest extends BaseFetchRequestTest {
       brokers,
       replicaAssignment = Map(0 -> Seq(leaderBrokerId, followerBrokerId))
     )
+    TestUtils.waitUntilLeaderIsKnown(brokers, new TopicPartition(topic, 0))
 
     // Create consumer with client.rack = follower id.
     val consumerProps = new Properties
