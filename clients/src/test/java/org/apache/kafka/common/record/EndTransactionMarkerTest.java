@@ -26,6 +26,7 @@ import org.apache.kafka.common.utils.ByteUtils;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
@@ -60,6 +61,13 @@ public class EndTransactionMarkerTest {
         buffer.putShort((short) -1);
         buffer.flip();
         assertThrows(InvalidRecordException.class, () -> EndTransactionMarker.deserializeValue(ControlRecordType.ABORT, buffer));
+
+        buffer.clear();
+        buffer.putShort((short) (100 + EndTxnMarker.HIGHEST_SUPPORTED_VERSION));
+        buffer.flip();
+        // This is an indirect test shows that we are parsing too high version as maximum supported version,
+        // so we get `BufferUnderflowException` instead of `InvalidRecordException`
+        assertThrows(BufferUnderflowException.class, () -> EndTransactionMarker.deserializeValue(ControlRecordType.ABORT, buffer));
     }
 
     @Test
